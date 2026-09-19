@@ -1,76 +1,47 @@
-# perplexity-pro-skill
+# perplexity-skill-for-openclaw
 
-A [pi-coding-agent](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) skill
-for querying **Perplexity Pro** through Chrome DevTools Protocol automation — grounded AI answers
-with citations, Deep Research, URL analysis, image generation, conversation threads,
-and search over your own thread history (Library).
+An **OpenClaw** skill for querying **Perplexity Pro** through Chrome DevTools Protocol
+automation — grounded AI answers with citations, Deep Research, URL analysis, image
+generation, conversation threads, and search over your own thread history (Library).
 
-Compatible with pi, Claude Code, Codex CLI, Amp, and Droid.
+Verified end to end with OpenClaw only. Nothing else has been exercised against this
+skill, so nothing else is claimed here.
 
-This is a port of an earlier Perplexity Pro skill (originally built for OpenClaw) to the
-[badlogic/pi-skills](https://github.com/badlogic/pi-skills) format, using `puppeteer-core`
-and Chrome on port `9222`.
+It drives the **OpenClaw-managed Chrome** (CDP on `:18800`; `PERPLEXITY_CDP` overrides)
+and reads the signed-in Perplexity session from that profile.
 
-## Installation
-
-### pi-coding-agent
+## Installation (OpenClaw)
 
 ```bash
-# User-level (available in all projects)
-git clone https://github.com/andychu666/perplexity-pro-skill ~/.pi/agent/skills/perplexity-pro-skill
-
-# Or project-level
-git clone https://github.com/andychu666/perplexity-pro-skill .pi/skills/perplexity-pro-skill
+git clone https://github.com/andychu666/perplexity-skill-for-openclaw ~/perplexity-skill-for-openclaw
+mkdir -p ~/.openclaw/skills
+ln -s ~/perplexity-skill-for-openclaw/perplexity-pro ~/.openclaw/skills/perplexity-pro
 ```
 
-### Codex CLI
+Then install the one runtime dependency (or reuse an existing `puppeteer-core` install —
+the scripts auto-detect one):
 
 ```bash
-git clone https://github.com/andychu666/perplexity-pro-skill ~/.codex/skills/perplexity-pro-skill
+cd ~/perplexity-skill-for-openclaw/perplexity-pro && npm install
 ```
-
-### Claude Code
-
-Claude Code only looks one level deep for `SKILL.md`, so symlink the skill folder:
-
-```bash
-git clone https://github.com/andychu666/perplexity-pro-skill ~/perplexity-pro-skill
-mkdir -p ~/.claude/skills
-ln -s ~/perplexity-pro-skill/perplexity-pro ~/.claude/skills/perplexity-pro
-```
-
-## Available Skills
-
-| Skill | Description |
-|-------|-------------|
-| [perplexity-pro](perplexity-pro/SKILL.md) | Query Perplexity Pro for grounded answers with citations, Deep Research, and image generation |
-
-## Skill Format
-
-Each skill follows the pi / Claude Code format:
-
-```markdown
----
-name: skill-name
-description: Short description shown to agent
----
-
-# Instructions
-
-Detailed instructions here...
-Helper files available at: {baseDir}/
-```
-
-The `{baseDir}` placeholder is replaced with the skill's directory path at runtime.
 
 ## Requirements
 
-- **Chrome** running with remote debugging on `:9222`
-- A **Perplexity Pro** account, logged in within that Chrome profile
-- **Node.js** — run `npm install` in `perplexity-pro/`, or reuse `puppeteer-core` from the
-  [browser-tools](https://github.com/badlogic/pi-skills/tree/main/browser-tools) skill (auto-detected)
+- The **OpenClaw-managed Chrome** running with CDP on `:18800` (`PERPLEXITY_CDP` overrides)
+- A **Perplexity Pro** account, signed in inside that browser profile
+- **Node.js** and `puppeteer-core` (see above)
 
-See [perplexity-pro/SKILL.md](perplexity-pro/SKILL.md) for full usage, flags, and troubleshooting.
+## Usage
+
+See [perplexity-pro/SKILL.md](perplexity-pro/SKILL.md) for the flags, the session-only CLI,
+JSON output shapes, and troubleshooting.
+
+Quick checks:
+
+```bash
+node perplexity-pro/scripts/perplexity-session.mjs --whoami    # session: OK ... csrf: present
+node perplexity-pro/scripts/perplexity-query.js "your question"
+```
 
 ## License
 
