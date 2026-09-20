@@ -418,6 +418,67 @@ async function waitAndDownloadImages(page, timeoutMs) {
   return downloaded;
 }
 
+
+// ---
+// Page-level extraction fallback for Deep Research answers.
+//
+// Observed 2026-09-20: a completed Deep Research run returned "[No answer
+// received]" while the report (43.9 KB, verified over CDP) was on the page.
+// The primary extractor only trusts [class*="prose"] / [class*="markdown"]
+// containers, and the deep-research report did not render inside those.
+// ---
+let ACTIVE_QUERY = '';
+
+const CHROME_LINES = new Set([
+  'Answer', 'Links', 'Images', 'Share', 'Read more', 'Ask a follow-up',
+  'Search', 'Computer', 'Model', 'Researched', 'Copy', 'Sources',
+  'Show more', 'Show less', 'Summarize', 'Follow up', 'Ask anything',
+]);
+
+function stripChromeAndEcho(raw, query) {
+  const rawLines = String(raw || '').split('\n');
+  const trim = (x) => x.trim();
+  const norm = (x) => String(x).normalize('NFKC');
+  let lines = rawLines.map(trim);
+  const q = trim(query || '');
+  if (q) {
+    const head = q.split('\n').map(trim).filter(Boolean);
+    const cp = (x) => Array.from(x).slice(0, 40).join('');
+    const firstAnchor = head.length ? cp(head[0]) : '';
+    const lastAnchor = head.length ? cp(head[head.length - 1]) : '';
+    const searchEnd = Math.min(lines.length, 200);
+    const hit = (anchor) => rawLines.findIndex((l, i) => i < searchEnd
+      && norm(trim(l)).startsWith(norm(anchor)));
+    const begin = firstAnchor ? hit(firstAnchor) : -1;
+    const end = lastAnchor && lastAnchor !== firstAnchor ? hit(lastAnchor) : -1;
+    if (begin >= 0) lines = lines.slice((end > begin ? end : begin) + 1);
+    while (firstAnchor && lines.length && norm(lines[0]).startsWith(norm(firstAnchor))) lines.shift();
+  }
+  lines = lines.filter((l) => l
+    && !CHROME_LINES.has(l)
+    && !/^\d+\s*(sources?|citations?)$/i.test(l)
+    && !/^\d{1,2}:\d{2}\s*(am|pm)?$/i.test(l));
+  return lines.join('\n').trim();
+}
+
+async function extractPageLevelFallback(page, query) {
+  try {
+    const read = () => page.evaluate(() => {
+      const m = document.querySelector('main') || document.body;
+      return (m && m.innerText) || '';
+    });
+    const first = await read();
+    await sleep(1500);
+    const second = await read();
+    if (second.length > first.length + 200) return '';
+    const cleaned = stripChromeAndEcho(second.length >= first.length ? second : first, query || ACTIVE_QUERY);
+    return cleaned.length > 800 ? cleaned : '';
+  } catch (e) {
+    log(`Warning: page-level fallback failed: ${e.message}`);
+    return '';
+  }
+}
+
 async function typeQuery(page, input, query) {
   const oneLine = query.replace(/\s*\n+\s*/g, ' ').trim();
   await input.click();
@@ -624,6 +685,7 @@ async function waitForAnswer(page, timeoutMs, flags, blocksBefore = null) {
 }
 
 async function runQuery(flags, query, timeoutMs) {
+  ACTIVE_QUERY = query; // used by the page-level extraction fallback
   let browser;
   let openedPage = null;
   try {
