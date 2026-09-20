@@ -1264,7 +1264,7 @@ async function runHistory(query, limit) {
 async function main() {
   const { flags, query } = parseArgs(process.argv.slice(2));
 
-  if (flags.help) { console.log(HELP_TEXT); process.stdout.write('', () => process.exit(0)); }
+  if (flags.help) { console.log(HELP_TEXT); process.stdout.write('', () => process.exit(0)); return; }
 
   // Discover mode: list news headlines by category (no query needed)
   if (flags.discover) {
@@ -1277,6 +1277,7 @@ async function main() {
       const result = await runDiscover(flags.discover, flags.limit);
       console.log(JSON.stringify(result, null, 2));
       process.stdout.write('', () => process.exit(0));
+      return;
     } catch (err) {
       console.error('ERROR: discover failed: ' + err.message);
       process.exit(1);
@@ -1291,6 +1292,7 @@ async function main() {
       const result = await runHistory(query, flags.limit);
       console.log(JSON.stringify(result, null, 2));
       process.stdout.write('', () => process.exit(0));
+      return;
     } catch (err) {
       console.error('ERROR: history search failed: ' + err.message);
       process.exit(1);
@@ -1311,11 +1313,11 @@ async function main() {
       console.log(JSON.stringify(result, null, 2));
       // The partial answer is printed above (never dropped), but a run that never
       // reached a stable answer is not a success.
-      process.stdout.write('', () => process.exit(result.incomplete ? 1 : 0));
+      return process.stdout.write('', () => process.exit(result.incomplete ? 1 : 0));
     } catch (err) {
       lastError = err;
       if (SUBMITTED_ONCE) {
-        log('Not retrying: the query was already submitted; a retry would create a duplicate thread. Inspect the open thread or rerun with --chat.');
+        log('Not retrying: the query may already have been submitted; a retry could create a duplicate thread. Inspect the open thread or rerun with --chat.');
         break;
       }
       log('Attempt ' + (attempt + 1) + ' failed: ' + err.message);
@@ -1334,7 +1336,8 @@ async function main() {
     console.error('ERROR: unverified partial result: ' + JSON.stringify(lastError.partialResult));
     console.log(JSON.stringify(lastError.partialResult, null, 2));
   }
-  process.exit(1);
+  // Flush stdout before exiting: a piped reader must not lose the JSON payload.
+  process.stdout.write('', () => process.exit(1));
 }
 
 // Only run the CLI when executed directly (not when require()'d by tests).
