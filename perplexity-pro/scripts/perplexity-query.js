@@ -401,7 +401,7 @@ async function extractPageLevelFallback(page, query) {
       return (m && m.innerText) || '';
     });
     const first = await read();
-    await page.waitForTimeout(1500);
+    await sleep(1500);
     const second = await read();
     // Compare lengths rather than requiring equality: live chrome (a running timer
     // or a blinking cursor) must not veto recovery of a finished report.
