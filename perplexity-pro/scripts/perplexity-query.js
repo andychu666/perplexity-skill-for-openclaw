@@ -405,7 +405,7 @@ async function waitAndDownloadImages(page, timeoutMs) {
           if (!type.startsWith('image/')) throw new Error('not an image (' + type + ')');
           const blob = await res.blob();
           if (blob.size > 8 * 1048576) throw new Error('image too large: ' + blob.size + ' bytes');
-          return await new Promise(resolve => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.readAsDataURL(blob); });
+          return await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error('FileReader failed: ' + (reader.error && reader.error.name))); reader.onabort = () => reject(new Error('FileReader aborted')); reader.readAsDataURL(blob); });
         } finally { clearTimeout(t); }
       }, safeImages[i].src);
       const base64 = dataUrl.split(',')[1];
@@ -427,6 +427,11 @@ async function waitAndDownloadImages(page, timeoutMs) {
 // The primary extractor only trusts [class*="prose"] / [class*="markdown"]
 // containers, and the deep-research report did not render inside those.
 // ---
+// Set once a query has actually been submitted. Retrying after submission
+// re-submits the same question and creates a duplicate Perplexity thread
+// (ocr review → issue #19). The retry loop consults this before trying again.
+let SUBMITTED_ONCE = false;
+
 let ACTIVE_QUERY = '';
 
 const CHROME_LINES = new Set([
@@ -718,7 +723,7 @@ async function runQuery(flags, query, timeoutMs) {
             }
           }
           log('chat: submitting through the session layer (no UI)');
-          submitted = true;
+          submitted = true; SUBMITTED_ONCE = true;
           const asked = await session.submitAsk(query, { threadUrl: flags.thread });
           if (asked.answer && asked.answer.trim()) {
             log(`chat: answered via session (${asked.answer.length} chars)`);
@@ -1258,7 +1263,7 @@ async function runHistory(query, limit) {
 async function main() {
   const { flags, query } = parseArgs(process.argv.slice(2));
 
-  if (flags.help) { console.log(HELP_TEXT); process.exit(0); }
+  if (flags.help) { console.log(HELP_TEXT); process.stdout.write('', () => process.exit(0)); // drain stdout: a bare exit after console.log can truncate large JSON }
 
   // Discover mode: list news headlines by category (no query needed)
   if (flags.discover) {
@@ -1270,7 +1275,7 @@ async function main() {
     try {
       const result = await runDiscover(flags.discover, flags.limit);
       console.log(JSON.stringify(result, null, 2));
-      process.exit(0);
+      process.stdout.write('', () => process.exit(0)); // drain stdout: a bare exit after console.log can truncate large JSON
     } catch (err) {
       console.error('ERROR: discover failed: ' + err.message);
       process.exit(1);
@@ -1284,7 +1289,7 @@ async function main() {
     try {
       const result = await runHistory(query, flags.limit);
       console.log(JSON.stringify(result, null, 2));
-      process.exit(0);
+      process.stdout.write('', () => process.exit(0)); // drain stdout: a bare exit after console.log can truncate large JSON
     } catch (err) {
       console.error('ERROR: history search failed: ' + err.message);
       process.exit(1);
@@ -1305,9 +1310,13 @@ async function main() {
       console.log(JSON.stringify(result, null, 2));
       // The partial answer is printed above (never dropped), but a run that never
       // reached a stable answer is not a success.
-      process.exit(result.incomplete ? 1 : 0);
+      process.stdout.write('', () => process.exit(result.incomplete ? 1 : 0)); // drain stdout: a bare exit after console.log can truncate large JSON
     } catch (err) {
       lastError = err;
+      if (SUBMITTED_ONCE) {
+        log('Not retrying: the query was already submitted, so a retry would create a duplicate thread. Inspect the open thread (or rerun with --chat) instead of re-submitting.');
+        break;
+      }
       log('Attempt ' + (attempt + 1) + ' failed: ' + err.message);
       if (err.message.includes('--chat requires') || err.message.includes('Could not find follow-up') || err.message.includes('Could not connect') || err.message.includes('connect ECONNREFUSED')) break;
       // A chat follow-up is not idempotent: retrying posts the same question into
